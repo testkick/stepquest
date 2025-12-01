@@ -10,6 +10,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
 import { ExplorerHUD } from '@/components/ExplorerHUD';
 import { PulsingMarker } from '@/components/PulsingMarker';
@@ -309,6 +310,20 @@ export default function ExplorerDashboard() {
         </TouchableOpacity>
       )}
 
+      {/* Journal Button - Hidden during mission selection */}
+      {!isSelecting && !isCompleted && (
+        <TouchableOpacity
+          style={[
+            styles.journalButton,
+            { bottom: insets.bottom + (isActive ? 180 : 120) },
+          ]}
+          onPress={() => router.push('/journal')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="journal" size={24} color={Colors.primary} />
+        </TouchableOpacity>
+      )}
+
       {/* Permission/Error Banner */}
       {(locationError || pedometerError || missionError) && !isWeb && !isSelecting && (
         <View style={[styles.errorBanner, { bottom: insets.bottom + (isActive ? 240 : 180) }]}>
@@ -388,6 +403,17 @@ const styles = StyleSheet.create({
   recenterButton: {
     position: 'absolute',
     right: Spacing.md,
+    width: 50,
+    height: 50,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Shadows.medium,
+  },
+  journalButton: {
+    position: 'absolute',
+    left: Spacing.md,
     width: 50,
     height: 50,
     borderRadius: BorderRadius.full,

@@ -11,7 +11,7 @@ export default function RootLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: Colors.secondary },
-          animation: 'fade',
+          animation: 'slide_from_right',
         }}
       >
         <Stack.Screen
@@ -19,6 +19,14 @@ export default function RootLayout() {
           options={{
             headerShown: false,
             title: 'Stepquest Explorer',
+          }}
+        />
+        <Stack.Screen
+          name="journal"
+          options={{
+            headerShown: false,
+            title: 'Explorer Journal',
+            animation: 'slide_from_bottom',
           }}
         />
       </Stack>

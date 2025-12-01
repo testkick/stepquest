@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -199,9 +199,12 @@ export const MissionCompletePanel: React.FC<MissionCompletePanelProps> = ({
   const scale = useSharedValue(0.5);
   const opacity = useSharedValue(0);
   const confettiY = useSharedValue(-50);
+  const rewardOpacity = useSharedValue(0);
 
   const vibeConfig = VIBE_CONFIG[mission.vibe];
   const stepsCompleted = mission.currentSteps - mission.stepsAtStart;
+  const isGenerating = mission.isGeneratingReward;
+  const rewardText = mission.rewardText;
 
   useEffect(() => {
     if (isVisible) {
@@ -221,6 +224,13 @@ export const MissionCompletePanel: React.FC<MissionCompletePanelProps> = ({
     }
   }, [isVisible, scale, opacity, confettiY]);
 
+  // Animate reward text when it appears
+  useEffect(() => {
+    if (rewardText && !isGenerating) {
+      rewardOpacity.value = withTiming(1, { duration: 500 });
+    }
+  }, [rewardText, isGenerating, rewardOpacity]);
+
   const panelStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
@@ -228,6 +238,10 @@ export const MissionCompletePanel: React.FC<MissionCompletePanelProps> = ({
 
   const confettiStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: confettiY.value }],
+  }));
+
+  const rewardStyle = useAnimatedStyle(() => ({
+    opacity: rewardOpacity.value,
   }));
 
   if (!isVisible) return null;
@@ -254,6 +268,21 @@ export const MissionCompletePanel: React.FC<MissionCompletePanelProps> = ({
         <Text style={styles.completionTitle}>Quest Complete!</Text>
         <Text style={styles.completionMission}>{mission.title}</Text>
 
+        {/* Reward Text Section */}
+        <View style={styles.rewardContainer}>
+          {isGenerating ? (
+            <View style={styles.rewardLoading}>
+              <ActivityIndicator size="small" color={vibeConfig.color} />
+              <Text style={styles.rewardLoadingText}>Discovering your reward...</Text>
+            </View>
+          ) : rewardText ? (
+            <Animated.View style={[styles.rewardTextContainer, rewardStyle]}>
+              <Ionicons name="gift" size={18} color={vibeConfig.color} />
+              <Text style={styles.rewardText}>{rewardText}</Text>
+            </Animated.View>
+          ) : null}
+        </View>
+
         <View style={styles.completionStats}>
           <View style={styles.completionStatItem}>
             <Ionicons name="footsteps" size={24} color={vibeConfig.color} />
@@ -273,12 +302,21 @@ export const MissionCompletePanel: React.FC<MissionCompletePanelProps> = ({
         </View>
 
         <TouchableOpacity
-          style={[styles.dismissButton, { backgroundColor: vibeConfig.color }]}
+          style={[
+            styles.dismissButton,
+            { backgroundColor: vibeConfig.color },
+            isGenerating && styles.dismissButtonDisabled,
+          ]}
           onPress={onDismiss}
           activeOpacity={0.8}
+          disabled={isGenerating}
         >
-          <Text style={styles.dismissButtonText}>Continue Exploring</Text>
-          <Ionicons name="arrow-forward" size={20} color={Colors.white} />
+          <Text style={styles.dismissButtonText}>
+            {isGenerating ? 'Please wait...' : 'Continue Exploring'}
+          </Text>
+          {!isGenerating && (
+            <Ionicons name="arrow-forward" size={20} color={Colors.white} />
+          )}
         </TouchableOpacity>
       </Animated.View>
     </View>
@@ -440,7 +478,7 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     ...Shadows.medium,
   },
   completionTitle: {
@@ -453,13 +491,47 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
     color: Colors.text,
     opacity: 0.7,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     textAlign: 'center',
+  },
+  // Reward styles
+  rewardContainer: {
+    width: '100%',
+    minHeight: 60,
+    marginBottom: Spacing.md,
+  },
+  rewardLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+  },
+  rewardLoadingText: {
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    opacity: 0.6,
+    fontStyle: 'italic',
+  },
+  rewardTextContainer: {
+    backgroundColor: 'rgba(46, 125, 50, 0.08)',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  rewardText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    lineHeight: 20,
+    fontStyle: 'italic',
   },
   completionStats: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
   },
   completionStatItem: {
     alignItems: 'center',
@@ -489,6 +561,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     borderRadius: BorderRadius.full,
     gap: Spacing.sm,
+  },
+  dismissButtonDisabled: {
+    opacity: 0.7,
   },
   dismissButtonText: {
     fontSize: FontSizes.md,

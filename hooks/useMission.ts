@@ -1,6 +1,12 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { Mission, ActiveMission, MissionState } from '@/types/mission';
 import { generateMissions } from '@/services/missionGenerator';
+import { generateRewardText } from '@/services/rewardGenerator';
+import {
+  saveCompletedMission,
+  updateStatsAfterMission,
+  CompletedMission,
+} from '@/services/storage';
 
 interface UseMissionResult {
   state: MissionState;
@@ -49,6 +55,8 @@ export const useMission = (): UseMissionResult => {
       stepsAtStart: currentSteps,
       currentSteps: currentSteps,
       isCompleted: false,
+      rewardText: undefined,
+      isGeneratingReward: false,
     };
 
     setActiveMission(active);
@@ -72,14 +80,71 @@ export const useMission = (): UseMissionResult => {
     });
   }, []);
 
-  // Complete the current mission
-  const completeMission = useCallback(() => {
-    if (activeMission) {
-      setActiveMission({
-        ...activeMission,
-        isCompleted: true,
+  // Complete the current mission with AI reward generation
+  const completeMission = useCallback(async () => {
+    if (!activeMission) return;
+
+    const stepsCompleted = activeMission.currentSteps - activeMission.stepsAtStart;
+
+    // Set generating state
+    setActiveMission({
+      ...activeMission,
+      isCompleted: true,
+      isGeneratingReward: true,
+    });
+    setState('completed');
+
+    try {
+      // Generate reward text using AI
+      const rewardText = await generateRewardText(
+        activeMission.title,
+        activeMission.vibe,
+        stepsCompleted
+      );
+
+      // Calculate duration
+      const startTime = new Date(activeMission.startedAt).getTime();
+      const endTime = Date.now();
+      const durationMinutes = Math.round((endTime - startTime) / 60000);
+
+      // Save to storage
+      const completedMission: CompletedMission = {
+        id: activeMission.id,
+        title: activeMission.title,
+        description: activeMission.description,
+        vibe: activeMission.vibe,
+        stepTarget: activeMission.stepTarget,
+        stepsCompleted,
+        rewardText,
+        completedAt: new Date().toISOString(),
+        durationMinutes,
+      };
+
+      await Promise.all([
+        saveCompletedMission(completedMission),
+        updateStatsAfterMission(stepsCompleted),
+      ]);
+
+      // Update active mission with reward
+      setActiveMission((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          rewardText,
+          isGeneratingReward: false,
+        };
       });
-      setState('completed');
+    } catch (err) {
+      console.error('Error completing mission:', err);
+      // Still show completion but with default reward
+      setActiveMission((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          rewardText: 'Your adventure was a success! Every step brought you closer to mastery.',
+          isGeneratingReward: false,
+        };
+      });
     }
   }, [activeMission]);
 

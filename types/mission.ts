@@ -18,6 +18,8 @@ export interface ActiveMission extends Mission {
   stepsAtStart: number;
   currentSteps: number;
   isCompleted: boolean;
+  rewardText?: string;
+  isGeneratingReward?: boolean;
 }
 
 export type MissionState = 'idle' | 'scanning' | 'selecting' | 'active' | 'completed';
