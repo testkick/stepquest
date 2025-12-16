@@ -22,7 +22,7 @@ import { usePedometer } from '@/hooks/usePedometer';
 import { useMission } from '@/hooks/useMission';
 import { Mission } from '@/types/mission';
 import { Colors, Spacing, BorderRadius, Shadows, FontSizes } from '@/constants/theme';
-import MapView, { Marker, PROVIDER_GOOGLE } from '@/components/MapLib';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from '@/components/MapLib';
 
 const LATITUDE_DELTA = 0.01;
 const LONGITUDE_DELTA = 0.01;
@@ -283,6 +283,20 @@ export default function ExplorerDashboard() {
             >
               <PulsingMarker size={20} />
             </Marker>
+          )}
+
+          {/* Route path during active mission */}
+          {activeMission && activeMission.routeCoordinates && activeMission.routeCoordinates.length > 1 && (
+            <Polyline
+              coordinates={activeMission.routeCoordinates.map(coord => ({
+                latitude: coord.latitude,
+                longitude: coord.longitude,
+              }))}
+              strokeColor="#FF6F00"
+              strokeWidth={4}
+              lineCap="round"
+              lineJoin="round"
+            />
           )}
         </MapView>
       ) : (

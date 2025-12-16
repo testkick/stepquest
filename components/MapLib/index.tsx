@@ -31,6 +31,9 @@ const MapFallback: React.FC<{ style?: ViewStyle }> = ({ style }) => (
 // Placeholder Marker that renders children
 const PlaceholderMarker: React.FC<{ children?: React.ReactNode }> = ({ children }) => <>{children}</>;
 
+// Placeholder Polyline that renders nothing (for Expo Go/Web)
+const PlaceholderPolyline: React.FC<Record<string, unknown>> = () => null;
+
 // Cache for lazy-loaded maps module
 let cachedMaps: Record<string, unknown> | null = null;
 let loadAttempted = false;
@@ -156,11 +159,40 @@ const Marker: React.FC<MarkerProps> = (props) => {
   return <ActualMarker {...rest}>{children}</ActualMarker>;
 };
 
+// Define prop types for Polyline
+interface PolylineProps {
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  }[];
+  strokeColor?: string;
+  strokeWidth?: number;
+  lineCap?: 'butt' | 'round' | 'square';
+  lineJoin?: 'miter' | 'round' | 'bevel';
+  lineDashPattern?: number[];
+  geodesic?: boolean;
+  [key: string]: unknown;
+}
+
+// Polyline wrapper that loads the actual Polyline lazily
+const Polyline: React.FC<PolylineProps> = (props) => {
+  const ActualPolyline = useMemo(() => {
+    if (isExpoGo) return PlaceholderPolyline;
+    const maps = getMaps();
+    if (maps?.Polyline) {
+      return maps.Polyline as React.ComponentType<Record<string, unknown>>;
+    }
+    return PlaceholderPolyline;
+  }, []);
+
+  return <ActualPolyline {...props} />;
+};
+
 // PROVIDER_GOOGLE - exported as undefined for compatibility
 // In dev builds, the actual value will be used when getMaps() is called
 const PROVIDER_GOOGLE = Platform.OS === 'android' && !isExpoGo ? 'google' : undefined;
 
-export { Marker, PROVIDER_GOOGLE };
+export { Marker, Polyline, PROVIDER_GOOGLE };
 export default MapView;
 
 const styles = StyleSheet.create({

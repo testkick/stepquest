@@ -20,6 +20,14 @@ export const Marker: React.FC<{ children?: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
+// Mock Polyline component for web (renders nothing)
+export const Polyline: React.FC<{
+  coordinates?: { latitude: number; longitude: number }[];
+  strokeColor?: string;
+  strokeWidth?: number;
+  [key: string]: unknown;
+}> = () => null;
+
 // Mock PROVIDER_GOOGLE constant
 export const PROVIDER_GOOGLE = undefined;
 
