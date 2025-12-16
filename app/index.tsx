@@ -22,19 +22,7 @@ import { usePedometer } from '@/hooks/usePedometer';
 import { useMission } from '@/hooks/useMission';
 import { Mission } from '@/types/mission';
 import { Colors, Spacing, BorderRadius, Shadows, FontSizes } from '@/constants/theme';
-
-// Only import MapView on native platforms
-let MapView: typeof import('react-native-maps').default | null = null;
-let Marker: typeof import('react-native-maps').Marker | null = null;
-let PROVIDER_GOOGLE: typeof import('react-native-maps').PROVIDER_GOOGLE | undefined = undefined;
-
-if (Platform.OS !== 'web') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Maps = require('react-native-maps');
-  MapView = Maps.default;
-  Marker = Maps.Marker;
-  PROVIDER_GOOGLE = Maps.PROVIDER_GOOGLE;
-}
+import MapView, { Marker, PROVIDER_GOOGLE } from '@/components/MapLib';
 
 const LATITUDE_DELTA = 0.01;
 const LONGITUDE_DELTA = 0.01;
@@ -158,7 +146,7 @@ const WebMapFallback: React.FC = () => {
 };
 
 export default function ExplorerDashboard() {
-  const mapRef = useRef<InstanceType<typeof import('react-native-maps').default> | null>(null);
+  const mapRef = useRef<any>(null);
   const insets = useSafeAreaInsets();
   const [isMapReady, setIsMapReady] = useState(false);
 
@@ -254,7 +242,7 @@ export default function ExplorerDashboard() {
       <StatusBar style={isWeb ? 'dark' : 'light'} />
 
       {/* Map View - Native only */}
-      {!isWeb && MapView && Marker ? (
+      {!isWeb ? (
         <MapView
           ref={mapRef}
           style={styles.map}
