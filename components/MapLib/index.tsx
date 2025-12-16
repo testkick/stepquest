@@ -1,14 +1,22 @@
 /**
  * MapLib - Safe Map Loading for Expo
  * Detects Expo Go and renders fallback, only loads react-native-maps in dev builds
+ * Uses lazy loading to completely avoid TurboModule crashes in Expo Go
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Platform, ViewStyle } from 'react-native';
-import Constants from 'expo-constants';
 
-// Detect if we're running in Expo Go (where native modules aren't available)
-const isExpoGo = Constants.appOwnership === 'expo';
+// Safely check if we're in Expo Go
+let isExpoGo = false;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Constants = require('expo-constants').default;
+  isExpoGo = Constants?.appOwnership === 'expo';
+} catch {
+  // If expo-constants fails, assume we might be in Expo Go
+  isExpoGo = true;
+}
 
 // Fallback component when map isn't available
 const MapFallback: React.FC<{ style?: ViewStyle }> = ({ style }) => (
@@ -23,7 +31,7 @@ const MapFallback: React.FC<{ style?: ViewStyle }> = ({ style }) => (
 // Placeholder Marker that renders children
 const PlaceholderMarker: React.FC<{ children?: React.ReactNode }> = ({ children }) => <>{children}</>;
 
-// Cache for loaded maps module - use any type for the module
+// Cache for lazy-loaded maps module
 let cachedMaps: Record<string, unknown> | null = null;
 let loadAttempted = false;
 
