@@ -1,10 +1,11 @@
 /**
  * Storage Service for Stepquest
- * Manages persistent data using AsyncStorage
+ * Cloud-aware data management using Supabase (when logged in) or AsyncStorage (offline)
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MissionVibe } from '@/types/mission';
+import { supabase, ProfileRow, MissionRow } from '@/lib/supabase';
 
 // Storage Keys
 const STORAGE_KEYS = {
@@ -44,9 +45,50 @@ const DEFAULT_STATS: UserStats = {
 const STEP_LENGTH_KM = 0.000762;
 
 /**
- * Get user stats from storage
+ * Helper to check if user is authenticated
  */
-export const getUserStats = async (): Promise<UserStats> => {
+const getCurrentUserId = async (): Promise<string | null> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Convert Supabase profile row to UserStats
+ */
+const profileToStats = (profile: ProfileRow): UserStats => ({
+  totalSteps: profile.total_steps,
+  totalMissions: profile.total_missions,
+  totalDistanceKm: profile.total_distance_km,
+  lastUpdated: profile.updated_at,
+});
+
+/**
+ * Convert Supabase mission row to CompletedMission
+ */
+const missionRowToCompleted = (row: MissionRow): CompletedMission => ({
+  id: row.id,
+  title: row.title,
+  description: row.description || '',
+  vibe: row.vibe as MissionVibe,
+  stepTarget: row.step_target,
+  stepsCompleted: row.steps_completed,
+  rewardText: row.reward_text || '',
+  completedAt: row.completed_at,
+  durationMinutes: row.duration_minutes,
+});
+
+// ============================================
+// LOCAL STORAGE FUNCTIONS (AsyncStorage)
+// ============================================
+
+/**
+ * Get user stats from local storage
+ */
+const getLocalUserStats = async (): Promise<UserStats> => {
   try {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.USER_STATS);
     if (data) {
@@ -54,19 +96,232 @@ export const getUserStats = async (): Promise<UserStats> => {
     }
     return DEFAULT_STATS;
   } catch (error) {
-    console.error('Error loading user stats:', error);
+    console.error('Error loading local user stats:', error);
     return DEFAULT_STATS;
   }
 };
 
 /**
- * Save user stats to storage
+ * Save user stats to local storage
  */
-export const saveUserStats = async (stats: UserStats): Promise<void> => {
+const saveLocalUserStats = async (stats: UserStats): Promise<void> => {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.USER_STATS, JSON.stringify(stats));
   } catch (error) {
-    console.error('Error saving user stats:', error);
+    console.error('Error saving local user stats:', error);
+  }
+};
+
+/**
+ * Get mission history from local storage
+ */
+const getLocalMissionHistory = async (): Promise<CompletedMission[]> => {
+  try {
+    const data = await AsyncStorage.getItem(STORAGE_KEYS.MISSION_HISTORY);
+    if (data) {
+      return JSON.parse(data) as CompletedMission[];
+    }
+    return [];
+  } catch (error) {
+    console.error('Error loading local mission history:', error);
+    return [];
+  }
+};
+
+/**
+ * Save mission to local storage
+ */
+const saveLocalMission = async (mission: CompletedMission): Promise<void> => {
+  try {
+    const history = await getLocalMissionHistory();
+    const updatedHistory = [mission, ...history];
+    await AsyncStorage.setItem(
+      STORAGE_KEYS.MISSION_HISTORY,
+      JSON.stringify(updatedHistory)
+    );
+  } catch (error) {
+    console.error('Error saving local mission:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// CLOUD STORAGE FUNCTIONS (Supabase)
+// ============================================
+
+/**
+ * Get user stats from Supabase
+ */
+const getCloudUserStats = async (userId: string): Promise<UserStats> => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching cloud stats:', error);
+      return DEFAULT_STATS;
+    }
+
+    return profileToStats(data as ProfileRow);
+  } catch (error) {
+    console.error('Error fetching cloud stats:', error);
+    return DEFAULT_STATS;
+  }
+};
+
+/**
+ * Save user stats to Supabase
+ */
+const saveCloudUserStats = async (userId: string, stats: UserStats): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        total_steps: stats.totalSteps,
+        total_missions: stats.totalMissions,
+        total_distance_km: stats.totalDistanceKm,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error saving cloud stats:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error saving cloud stats:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get mission history from Supabase
+ */
+const getCloudMissionHistory = async (userId: string): Promise<CompletedMission[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('missions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('completed_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching cloud missions:', error);
+      return [];
+    }
+
+    return (data as MissionRow[]).map(missionRowToCompleted);
+  } catch (error) {
+    console.error('Error fetching cloud missions:', error);
+    return [];
+  }
+};
+
+/**
+ * Save mission to Supabase
+ */
+const saveCloudMission = async (userId: string, mission: CompletedMission): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('missions')
+      .insert({
+        id: mission.id,
+        user_id: userId,
+        title: mission.title,
+        description: mission.description,
+        vibe: mission.vibe,
+        step_target: mission.stepTarget,
+        steps_completed: mission.stepsCompleted,
+        reward_text: mission.rewardText,
+        completed_at: mission.completedAt,
+        duration_minutes: mission.durationMinutes,
+      });
+
+    if (error) {
+      console.error('Error saving cloud mission:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error saving cloud mission:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete all missions from Supabase for a user
+ */
+const clearCloudMissions = async (userId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('missions')
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error clearing cloud missions:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error clearing cloud missions:', error);
+    throw error;
+  }
+};
+
+/**
+ * Reset cloud stats to default
+ */
+const resetCloudStats = async (userId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        total_steps: 0,
+        total_missions: 0,
+        total_distance_km: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error resetting cloud stats:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error resetting cloud stats:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// PUBLIC API (Cloud-aware functions)
+// ============================================
+
+/**
+ * Get user stats (cloud if logged in, local otherwise)
+ */
+export const getUserStats = async (): Promise<UserStats> => {
+  const userId = await getCurrentUserId();
+
+  if (userId) {
+    return getCloudUserStats(userId);
+  }
+
+  return getLocalUserStats();
+};
+
+/**
+ * Save user stats (cloud if logged in, local otherwise)
+ */
+export const saveUserStats = async (stats: UserStats): Promise<void> => {
+  const userId = await getCurrentUserId();
+
+  if (userId) {
+    await saveCloudUserStats(userId, stats);
+  } else {
+    await saveLocalUserStats(stats);
   }
 };
 
@@ -96,19 +351,16 @@ export const updateStatsAfterMission = async (
 };
 
 /**
- * Get mission history from storage
+ * Get mission history (cloud if logged in, local otherwise)
  */
 export const getMissionHistory = async (): Promise<CompletedMission[]> => {
-  try {
-    const data = await AsyncStorage.getItem(STORAGE_KEYS.MISSION_HISTORY);
-    if (data) {
-      return JSON.parse(data) as CompletedMission[];
-    }
-    return [];
-  } catch (error) {
-    console.error('Error loading mission history:', error);
-    return [];
+  const userId = await getCurrentUserId();
+
+  if (userId) {
+    return getCloudMissionHistory(userId);
   }
+
+  return getLocalMissionHistory();
 };
 
 /**
@@ -117,17 +369,12 @@ export const getMissionHistory = async (): Promise<CompletedMission[]> => {
 export const saveCompletedMission = async (
   mission: CompletedMission
 ): Promise<void> => {
-  try {
-    const history = await getMissionHistory();
-    // Add new mission at the beginning (most recent first)
-    const updatedHistory = [mission, ...history];
-    await AsyncStorage.setItem(
-      STORAGE_KEYS.MISSION_HISTORY,
-      JSON.stringify(updatedHistory)
-    );
-  } catch (error) {
-    console.error('Error saving completed mission:', error);
-    throw error;
+  const userId = await getCurrentUserId();
+
+  if (userId) {
+    await saveCloudMission(userId, mission);
+  } else {
+    await saveLocalMission(mission);
   }
 };
 
@@ -135,15 +382,21 @@ export const saveCompletedMission = async (
  * Clear all data (for testing/reset)
  */
 export const clearAllData = async (): Promise<void> => {
-  try {
-    await AsyncStorage.multiRemove([
-      STORAGE_KEYS.USER_STATS,
-      STORAGE_KEYS.MISSION_HISTORY,
+  const userId = await getCurrentUserId();
+
+  if (userId) {
+    // Clear cloud data
+    await Promise.all([
+      clearCloudMissions(userId),
+      resetCloudStats(userId),
     ]);
-  } catch (error) {
-    console.error('Error clearing data:', error);
-    throw error;
   }
+
+  // Always clear local data
+  await AsyncStorage.multiRemove([
+    STORAGE_KEYS.USER_STATS,
+    STORAGE_KEYS.MISSION_HISTORY,
+  ]);
 };
 
 /**
@@ -158,4 +411,81 @@ export const getJournalData = async (): Promise<{
     getMissionHistory(),
   ]);
   return { stats, history };
+};
+
+/**
+ * Sync local data to cloud after login
+ * This is called when a user successfully signs in or signs up
+ */
+export const syncLocalDataToCloud = async (userId: string): Promise<void> => {
+  try {
+    // Get local data
+    const localStats = await getLocalUserStats();
+    const localHistory = await getLocalMissionHistory();
+
+    // Check if there's any local data to sync
+    const hasLocalData =
+      localStats.totalSteps > 0 ||
+      localStats.totalMissions > 0 ||
+      localHistory.length > 0;
+
+    if (!hasLocalData) {
+      console.log('No local data to sync');
+      return;
+    }
+
+    console.log('Syncing local data to cloud...', {
+      stats: localStats,
+      missionsCount: localHistory.length,
+    });
+
+    // Get current cloud stats
+    const cloudStats = await getCloudUserStats(userId);
+
+    // Merge stats (add local to cloud)
+    const mergedStats: UserStats = {
+      totalSteps: cloudStats.totalSteps + localStats.totalSteps,
+      totalMissions: cloudStats.totalMissions + localStats.totalMissions,
+      totalDistanceKm: cloudStats.totalDistanceKm + localStats.totalDistanceKm,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    // Save merged stats to cloud
+    await saveCloudUserStats(userId, mergedStats);
+
+    // Upload local missions to cloud (if any)
+    for (const mission of localHistory) {
+      try {
+        await saveCloudMission(userId, mission);
+      } catch (error) {
+        // If mission already exists (duplicate ID), skip it
+        console.log('Mission may already exist, skipping:', mission.id);
+      }
+    }
+
+    // Clear local data after successful sync
+    await AsyncStorage.multiRemove([
+      STORAGE_KEYS.USER_STATS,
+      STORAGE_KEYS.MISSION_HISTORY,
+    ]);
+
+    console.log('Local data synced and cleared successfully');
+  } catch (error) {
+    console.error('Error syncing local data to cloud:', error);
+    throw error;
+  }
+};
+
+/**
+ * Check if there's local data that needs syncing
+ */
+export const hasLocalDataToSync = async (): Promise<boolean> => {
+  const localStats = await getLocalUserStats();
+  const localHistory = await getLocalMissionHistory();
+
+  return (
+    localStats.totalSteps > 0 ||
+    localStats.totalMissions > 0 ||
+    localHistory.length > 0
+  );
 };

@@ -21,9 +21,12 @@ import {
   CompletedMission,
 } from '@/services/storage';
 import { Colors, Spacing, BorderRadius, FontSizes, Shadows } from '@/constants/theme';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function JournalScreen() {
   const insets = useSafeAreaInsets();
+  const { isAuthenticated, user, signOut, isLoading: authLoading } = useAuth();
+
   const [stats, setStats] = useState<UserStats | null>(null);
   const [history, setHistory] = useState<CompletedMission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,9 +45,10 @@ export default function JournalScreen() {
     }
   }, []);
 
+  // Load data on mount and when auth state changes
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [loadData, isAuthenticated]);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -75,6 +79,36 @@ export default function JournalScreen() {
     );
   }, []);
 
+  const handleCloudSync = useCallback(() => {
+    if (isAuthenticated) {
+      // Show sign out confirmation
+      Alert.alert(
+        'Cloud Sync',
+        `Signed in as ${user?.email}\n\nYour data is synced to the cloud.`,
+        [
+          { text: 'OK', style: 'cancel' },
+          {
+            text: 'Sign Out',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await signOut();
+                // Reload data after sign out (will show local data)
+                loadData();
+                Alert.alert('Signed Out', 'Your data will now be stored locally on this device.');
+              } catch {
+                Alert.alert('Error', 'Failed to sign out. Please try again.');
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      // Navigate to auth screen
+      router.push('/auth');
+    }
+  }, [isAuthenticated, user, signOut, loadData]);
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
@@ -92,7 +126,7 @@ export default function JournalScreen() {
     });
   };
 
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <StatusBar style="dark" />
@@ -119,8 +153,30 @@ export default function JournalScreen() {
           <Ionicons name="journal" size={28} color={Colors.primary} />
           <Text style={styles.headerTitle}>Explorer&apos;s Journal</Text>
         </View>
-        <View style={styles.headerSpacer} />
+        {/* Cloud Sync Button */}
+        <TouchableOpacity
+          style={[
+            styles.cloudButton,
+            isAuthenticated && styles.cloudButtonAuthenticated,
+          ]}
+          onPress={handleCloudSync}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={isAuthenticated ? 'cloud-done' : 'cloud-outline'}
+            size={22}
+            color={isAuthenticated ? Colors.white : Colors.primary}
+          />
+        </TouchableOpacity>
       </View>
+
+      {/* Sync Status Banner */}
+      {isAuthenticated && (
+        <View style={styles.syncBanner}>
+          <Ionicons name="checkmark-circle" size={16} color={Colors.primary} />
+          <Text style={styles.syncBannerText}>Synced to cloud</Text>
+        </View>
+      )}
 
       <ScrollView
         style={styles.scrollView}
@@ -166,6 +222,26 @@ export default function JournalScreen() {
             </View>
           </View>
         </View>
+
+        {/* Cloud Sync CTA (when not authenticated) */}
+        {!isAuthenticated && (
+          <TouchableOpacity
+            style={styles.cloudCta}
+            onPress={handleCloudSync}
+            activeOpacity={0.8}
+          >
+            <View style={styles.cloudCtaIcon}>
+              <Ionicons name="cloud-upload" size={24} color={Colors.accent} />
+            </View>
+            <View style={styles.cloudCtaContent}>
+              <Text style={styles.cloudCtaTitle}>Backup Your Progress</Text>
+              <Text style={styles.cloudCtaSubtitle}>
+                Sign in to sync your stats across devices
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Colors.accent} />
+          </TouchableOpacity>
+        )}
 
         {/* History Section */}
         <View style={styles.historySection}>
@@ -297,8 +373,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.text,
   },
-  headerSpacer: {
+  cloudButton: {
     width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Shadows.small,
+  },
+  cloudButtonAuthenticated: {
+    backgroundColor: Colors.primary,
+  },
+  syncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(46, 125, 50, 0.1)',
+    paddingVertical: Spacing.xs,
+    gap: Spacing.xs,
+  },
+  syncBannerText: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: '500',
   },
   scrollView: {
     flex: 1,
@@ -346,6 +444,41 @@ const styles = StyleSheet.create({
     width: 1,
     height: 50,
     backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  // Cloud CTA
+  cloudCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 111, 0, 0.3)',
+    borderStyle: 'dashed',
+  },
+  cloudCtaIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 111, 0, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: Spacing.md,
+  },
+  cloudCtaContent: {
+    flex: 1,
+  },
+  cloudCtaTitle: {
+    fontSize: FontSizes.md,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  cloudCtaSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.text,
+    opacity: 0.6,
   },
   // History Section
   historySection: {
