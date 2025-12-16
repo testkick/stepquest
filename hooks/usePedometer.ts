@@ -33,17 +33,14 @@ export const usePedometer = (): UsePedometerResult => {
         setIsPedometerAvailable(available ? 'available' : 'unavailable');
 
         if (!available) {
-          setErrorMsg('Pedometer is not available on this device');
-          // On web or simulator, simulate step counting for demo
-          if (Platform.OS === 'web' || __DEV__) {
-            setIsAvailable(true);
-            setIsPedometerAvailable('simulated');
-            // Simulate steps for demo purposes
-            const interval = setInterval(() => {
-              setSteps((prev) => prev + Math.floor(Math.random() * 3));
-            }, 2000);
-            return () => clearInterval(interval);
+          // Only show error on native platforms where pedometer should be available
+          if (Platform.OS !== 'web') {
+            setErrorMsg('Pedometer is not available on this device. Steps will not be tracked.');
+          } else {
+            // On web, just note it's unavailable but don't show error
+            setIsPedometerAvailable('unavailable_web');
           }
+          // NO FAKE DATA - if pedometer isn't available, steps stay at 0
           return;
         }
 

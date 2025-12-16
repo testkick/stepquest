@@ -213,8 +213,14 @@ export default function ExplorerDashboard() {
   };
 
   const handleScanArea = useCallback(() => {
-    scanForMissions();
-  }, [scanForMissions]);
+    // Pass current location for context-aware mission generation
+    const locationContext = location ? {
+      latitude: location.latitude,
+      longitude: location.longitude,
+    } : undefined;
+
+    scanForMissions(locationContext);
+  }, [scanForMissions, location]);
 
   const handleSelectMission = useCallback((mission: Mission) => {
     selectMission(mission, steps);

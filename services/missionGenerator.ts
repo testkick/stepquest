@@ -1,10 +1,17 @@
 /**
  * Mission Generator Service using Newell AI
- * Generates context-aware walking missions based on time of day
+ * Generates context-aware walking missions based on time of day and real-world location
  */
 
 import { generateText } from '@fastshot/ai';
+import * as Location from 'expo-location';
 import { Mission, MissionVibe } from '@/types/mission';
+
+// Location context for missions
+interface LocationContext {
+  latitude: number;
+  longitude: number;
+}
 
 // Get time of day context
 const getTimeContext = (): { period: string; mood: string } => {
@@ -24,6 +31,59 @@ const getTimeContext = (): { period: string; mood: string } => {
     return { period: 'night', mood: 'mysterious and calm' };
   } else {
     return { period: 'late night', mood: 'quiet and adventurous' };
+  }
+};
+
+/**
+ * Reverse geocode coordinates to get a readable location name
+ */
+const getLocationName = async (coords: LocationContext): Promise<string> => {
+  try {
+    const results = await Location.reverseGeocodeAsync({
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+    });
+
+    if (results && results.length > 0) {
+      const place = results[0];
+
+      // Build a descriptive location string
+      const parts: string[] = [];
+
+      // Add neighborhood/district if available
+      if (place.subregion) {
+        parts.push(place.subregion);
+      } else if (place.district) {
+        parts.push(place.district);
+      } else if (place.name && place.name !== place.street) {
+        parts.push(place.name);
+      }
+
+      // Add city
+      if (place.city) {
+        parts.push(place.city);
+      }
+
+      // If we have parts, join them
+      if (parts.length > 0) {
+        return parts.join(', ');
+      }
+
+      // Fallback to street if available
+      if (place.street) {
+        return `near ${place.street}${place.city ? `, ${place.city}` : ''}`;
+      }
+
+      // Ultimate fallback
+      if (place.region) {
+        return place.region;
+      }
+    }
+
+    return 'Urban Environment';
+  } catch (error) {
+    console.log('Reverse geocoding failed:', error);
+    return 'Urban Environment';
   }
 };
 
@@ -55,26 +115,27 @@ const parseAIResponse = (response: string): Omit<Mission, 'id' | 'generatedAt'>[
 };
 
 // Default missions as fallback
-const getDefaultMissions = (): Omit<Mission, 'id' | 'generatedAt'>[] => {
+const getDefaultMissions = (locationName?: string): Omit<Mission, 'id' | 'generatedAt'>[] => {
   const { period } = getTimeContext();
+  const location = locationName || 'your neighborhood';
 
   return [
     {
       vibe: 'chill' as MissionVibe,
       title: `The ${period.charAt(0).toUpperCase() + period.slice(1)} Stroll`,
-      description: `Take a peaceful walk through your neighborhood. No rush, just enjoy the journey and let your mind wander freely.`,
+      description: `Take a peaceful walk through ${location}. No rush, just enjoy the journey and let your mind wander freely.`,
       stepTarget: 1000,
     },
     {
       vibe: 'discovery' as MissionVibe,
       title: `Urban Explorer's Path`,
-      description: `Venture beyond your usual routes. Find a street you've never walked, a building you've never noticed, or a view you've never seen.`,
+      description: `Venture beyond your usual routes in ${location}. Find a street you've never walked, a building you've never noticed.`,
       stepTarget: 2500,
     },
     {
       vibe: 'workout' as MissionVibe,
       title: `The Endurance Trial`,
-      description: `Push your limits with this challenging trek. Maintain a brisk pace and feel the energy surge through every step.`,
+      description: `Push your limits with this challenging trek around ${location}. Maintain a brisk pace and feel the energy surge.`,
       stepTarget: 5000,
     },
   ];
@@ -82,11 +143,20 @@ const getDefaultMissions = (): Omit<Mission, 'id' | 'generatedAt'>[] => {
 
 /**
  * Generate walking missions using Newell AI
+ * @param location Optional GPS coordinates for location-aware missions
  */
-export const generateMissions = async (): Promise<Mission[]> => {
+export const generateMissions = async (location?: LocationContext): Promise<Mission[]> => {
   const { period, mood } = getTimeContext();
 
+  // Get location name from coordinates if provided
+  let locationName = 'Urban Environment';
+  if (location) {
+    locationName = await getLocationName(location);
+  }
+
   const prompt = `You are a creative quest designer for an urban exploration walking app called Stepquest. Generate 3 unique walking missions for a user during the ${period} (the mood is ${mood}).
+
+The user is currently at ${locationName}. Incorporate this environment into the mission narrative - reference local landmarks, typical features of such areas, or the atmosphere of this location.
 
 Each mission should have a different "vibe":
 1. CHILL - A short, relaxing walk (800-1500 steps)
@@ -95,8 +165,8 @@ Each mission should have a different "vibe":
 
 For each mission, provide:
 - vibe: exactly one of "chill", "discovery", or "workout"
-- title: A creative, evocative quest name (max 30 chars)
-- description: An immersive narrative description that makes walking feel like an adventure (2-3 sentences, max 150 chars)
+- title: A creative, evocative quest name that could reference the location (max 30 chars)
+- description: An immersive narrative description that makes walking feel like an adventure and incorporates the ${locationName} environment (2-3 sentences, max 150 chars)
 - stepTarget: A specific integer step goal within the vibe's range
 
 Respond ONLY with a valid JSON array, no other text:
@@ -111,7 +181,7 @@ Respond ONLY with a valid JSON array, no other text:
 
     if (!response) {
       console.log('Empty AI response, using defaults');
-      return getDefaultMissions().map((m) => ({
+      return getDefaultMissions(locationName).map((m) => ({
         ...m,
         id: generateId(),
         generatedAt: new Date(),
@@ -124,7 +194,7 @@ Respond ONLY with a valid JSON array, no other text:
     const vibes: MissionVibe[] = ['chill', 'discovery', 'workout'];
     const missions: Mission[] = vibes.map((vibe, index) => {
       const found = parsedMissions.find((m) => m.vibe === vibe);
-      const defaults = getDefaultMissions();
+      const defaults = getDefaultMissions(locationName);
 
       return {
         id: generateId(),
@@ -140,7 +210,7 @@ Respond ONLY with a valid JSON array, no other text:
   } catch (error) {
     console.error('Mission generation error:', error);
     // Return default missions on error
-    return getDefaultMissions().map((m) => ({
+    return getDefaultMissions(locationName).map((m) => ({
       ...m,
       id: generateId(),
       generatedAt: new Date(),

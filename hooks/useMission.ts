@@ -11,6 +11,12 @@ import {
 // Minimum distance in meters between recorded GPS points
 const MIN_DISTANCE_METERS = 5;
 
+// Location context for missions
+interface LocationContext {
+  latitude: number;
+  longitude: number;
+}
+
 /**
  * Calculate distance between two GPS coordinates in meters using Haversine formula
  */
@@ -38,7 +44,8 @@ interface UseMissionResult {
   missions: Mission[];
   activeMission: ActiveMission | null;
   error: string | null;
-  scanForMissions: () => Promise<void>;
+  /** Scan for missions with optional location for context-aware generation */
+  scanForMissions: (location?: LocationContext) => Promise<void>;
   selectMission: (mission: Mission, currentSteps: number) => void;
   updateMissionProgress: (currentSteps: number) => void;
   /** Add a GPS coordinate to the active mission's route */
@@ -57,8 +64,8 @@ export const useMission = (): UseMissionResult => {
   // Ref to track last recorded coordinate for distance filtering
   const lastCoordinateRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
-  // Scan for new missions using AI
-  const scanForMissions = useCallback(async () => {
+  // Scan for new missions using AI with optional location context
+  const scanForMissions = useCallback(async (location?: LocationContext) => {
     if (state === 'scanning' || state === 'active') {
       return;
     }
@@ -67,7 +74,8 @@ export const useMission = (): UseMissionResult => {
       setState('scanning');
       setError(null);
 
-      const generatedMissions = await generateMissions();
+      // Pass location to generateMissions for context-aware mission generation
+      const generatedMissions = await generateMissions(location);
       setMissions(generatedMissions);
       setState('selecting');
     } catch (err) {
