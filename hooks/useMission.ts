@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { Mission, ActiveMission, MissionState } from '@/types/mission';
+import { useState, useCallback, useRef } from 'react';
+import { Mission, ActiveMission, MissionState, RouteCoordinate } from '@/types/mission';
 import { generateMissions } from '@/services/missionGenerator';
 import { generateRewardText } from '@/services/rewardGenerator';
 import {
@@ -7,6 +7,31 @@ import {
   updateStatsAfterMission,
   CompletedMission,
 } from '@/services/storage';
+
+// Minimum distance in meters between recorded GPS points
+const MIN_DISTANCE_METERS = 5;
+
+/**
+ * Calculate distance between two GPS coordinates in meters using Haversine formula
+ */
+const calculateDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number => {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
 
 interface UseMissionResult {
   state: MissionState;
@@ -16,6 +41,8 @@ interface UseMissionResult {
   scanForMissions: () => Promise<void>;
   selectMission: (mission: Mission, currentSteps: number) => void;
   updateMissionProgress: (currentSteps: number) => void;
+  /** Add a GPS coordinate to the active mission's route */
+  addRoutePoint: (latitude: number, longitude: number) => void;
   completeMission: () => void;
   cancelMission: () => void;
   dismissMissions: () => void;
@@ -26,6 +53,9 @@ export const useMission = (): UseMissionResult => {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [activeMission, setActiveMission] = useState<ActiveMission | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Ref to track last recorded coordinate for distance filtering
+  const lastCoordinateRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
   // Scan for new missions using AI
   const scanForMissions = useCallback(async () => {
@@ -57,7 +87,11 @@ export const useMission = (): UseMissionResult => {
       isCompleted: false,
       rewardText: undefined,
       isGeneratingReward: false,
+      routeCoordinates: [], // Initialize empty route
     };
+
+    // Reset the last coordinate ref
+    lastCoordinateRef.current = null;
 
     setActiveMission(active);
     setMissions([]);
@@ -79,6 +113,49 @@ export const useMission = (): UseMissionResult => {
       };
     });
   }, []);
+
+  // Add a GPS coordinate to the active mission's route
+  const addRoutePoint = useCallback((latitude: number, longitude: number) => {
+    // Only record when mission is active
+    if (state !== 'active') {
+      return;
+    }
+
+    // Apply distance filter
+    if (lastCoordinateRef.current) {
+      const distance = calculateDistance(
+        lastCoordinateRef.current.latitude,
+        lastCoordinateRef.current.longitude,
+        latitude,
+        longitude
+      );
+
+      // Skip if too close to last recorded point
+      if (distance < MIN_DISTANCE_METERS) {
+        return;
+      }
+    }
+
+    // Update last coordinate
+    lastCoordinateRef.current = { latitude, longitude };
+
+    // Create the route point
+    const routePoint: RouteCoordinate = {
+      latitude,
+      longitude,
+      timestamp: Date.now(),
+    };
+
+    // Add to active mission's route
+    setActiveMission((prev) => {
+      if (!prev) return null;
+
+      return {
+        ...prev,
+        routeCoordinates: [...prev.routeCoordinates, routePoint],
+      };
+    });
+  }, [state]);
 
   // Complete the current mission with AI reward generation
   const completeMission = useCallback(async () => {
@@ -107,7 +184,7 @@ export const useMission = (): UseMissionResult => {
       const endTime = Date.now();
       const durationMinutes = Math.round((endTime - startTime) / 60000);
 
-      // Save to storage
+      // Save to storage (includes route coordinates)
       const completedMission: CompletedMission = {
         id: activeMission.id,
         title: activeMission.title,
@@ -118,6 +195,7 @@ export const useMission = (): UseMissionResult => {
         rewardText,
         completedAt: new Date().toISOString(),
         durationMinutes,
+        routeCoordinates: activeMission.routeCoordinates,
       };
 
       await Promise.all([
@@ -150,6 +228,7 @@ export const useMission = (): UseMissionResult => {
 
   // Cancel the current mission
   const cancelMission = useCallback(() => {
+    lastCoordinateRef.current = null;
     setActiveMission(null);
     setState('idle');
   }, []);
@@ -168,6 +247,7 @@ export const useMission = (): UseMissionResult => {
     scanForMissions,
     selectMission,
     updateMissionProgress,
+    addRoutePoint,
     completeMission,
     cancelMission,
     dismissMissions,

@@ -1,27 +1,17 @@
 /**
- * MapLib - Native Implementation with Safe Loading
- * Attempts to load react-native-maps safely, falls back gracefully
- * Does NOT import react-native-maps at module load time to avoid TurboModule crashes
+ * MapLib - Safe Map Loading for Expo
+ * Detects Expo Go and renders fallback, only loads react-native-maps in dev builds
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, NativeModules } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Platform, ViewStyle } from 'react-native';
+import Constants from 'expo-constants';
 
-// Check if the native module is available BEFORE trying to import
-const isMapModuleAvailable = (): boolean => {
-  try {
-    // Check if the native module exists in the NativeModules registry
-    return !!(
-      NativeModules.AIRMapManager ||
-      NativeModules.AIRGoogleMapManager
-    );
-  } catch {
-    return false;
-  }
-};
+// Detect if we're running in Expo Go (where native modules aren't available)
+const isExpoGo = Constants.appOwnership === 'expo';
 
 // Fallback component when map isn't available
-const MapFallback: React.FC<{ style?: any }> = ({ style }) => (
+const MapFallback: React.FC<{ style?: ViewStyle }> = ({ style }) => (
   <View style={[styles.fallbackContainer, style]}>
     <Text style={styles.fallbackText}>Map requires a development build</Text>
     <Text style={styles.fallbackSubtext}>
@@ -31,24 +21,26 @@ const MapFallback: React.FC<{ style?: any }> = ({ style }) => (
 );
 
 // Placeholder Marker that renders children
-const PlaceholderMarker: React.FC<any> = ({ children }) => <>{children}</>;
+const PlaceholderMarker: React.FC<{ children?: React.ReactNode }> = ({ children }) => <>{children}</>;
 
-// Cache for loaded maps module
-let cachedMaps: typeof import('react-native-maps') | null = null;
+// Cache for loaded maps module - use any type for the module
+let cachedMaps: Record<string, unknown> | null = null;
 let loadAttempted = false;
 
-// Load maps only when actually needed
-const getMaps = (): typeof import('react-native-maps') | null => {
-  if (loadAttempted) return cachedMaps;
-  loadAttempted = true;
-
-  if (!isMapModuleAvailable()) {
+// Load maps only when actually needed and only in dev builds
+const getMaps = (): Record<string, unknown> | null => {
+  // Never try to load in Expo Go
+  if (isExpoGo) {
     return null;
   }
 
+  if (loadAttempted) return cachedMaps;
+  loadAttempted = true;
+
   try {
+    // Dynamic require - only executed in dev builds
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    cachedMaps = require('react-native-maps');
+    cachedMaps = require('react-native-maps') as Record<string, unknown>;
     return cachedMaps;
   } catch (error) {
     console.warn('Failed to load react-native-maps:', error);
@@ -57,17 +49,26 @@ const getMaps = (): typeof import('react-native-maps') | null => {
 };
 
 // MapView component with lazy loading
-const MapView = React.forwardRef<any, any>((props, ref) => {
+const MapView = React.forwardRef<View, Record<string, unknown>>((props, ref) => {
   const { style, children, onMapReady, ...rest } = props;
-  const [RNMapView, setRNMapView] = useState<any>(null);
+  const [RNMapView, setRNMapView] = useState<React.ComponentType<Record<string, unknown>> | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const internalRef = useRef<any>(null);
+  const internalRef = useRef<View>(null);
+
+  // Cast style to ViewStyle for type safety
+  const viewStyle = style as ViewStyle | undefined;
 
   // Load the map component
   useEffect(() => {
+    // Skip loading in Expo Go
+    if (isExpoGo) {
+      setIsReady(true);
+      return;
+    }
+
     const maps = getMaps();
     if (maps?.default) {
-      setRNMapView(() => maps.default);
+      setRNMapView(() => maps.default as React.ComponentType<Record<string, unknown>>);
     }
     setIsReady(true);
   }, []);
@@ -78,58 +79,78 @@ const MapView = React.forwardRef<any, any>((props, ref) => {
       if (typeof ref === 'function') {
         ref(internalRef.current);
       } else {
-        (ref as React.MutableRefObject<any>).current = internalRef.current;
+        (ref as React.MutableRefObject<View | null>).current = internalRef.current;
       }
     }
   }, [ref, RNMapView]);
 
   const handleMapReady = useCallback(() => {
-    onMapReady?.();
+    if (onMapReady && typeof onMapReady === 'function') {
+      (onMapReady as () => void)();
+    }
   }, [onMapReady]);
 
   // Loading state
   if (!isReady) {
     return (
-      <View style={[styles.fallbackContainer, style]}>
+      <View style={[styles.fallbackContainer, viewStyle]}>
         <ActivityIndicator size="large" color="#2E7D32" />
         <Text style={styles.loadingText}>Loading map...</Text>
       </View>
     );
   }
 
-  // Fallback when maps not available
+  // Fallback when maps not available (Expo Go or error)
   if (!RNMapView) {
-    return <MapFallback style={style} />;
+    return <MapFallback style={viewStyle} />;
   }
 
+  const ActualMapView = RNMapView;
+
   return (
-    <RNMapView
+    <ActualMapView
       ref={internalRef}
       style={style}
       onMapReady={handleMapReady}
       {...rest}
     >
       {children}
-    </RNMapView>
+    </ActualMapView>
   );
 });
 
 MapView.displayName = 'MapView';
 
+// Define prop types for Marker
+interface MarkerProps {
+  children?: React.ReactNode;
+  coordinate?: {
+    latitude: number;
+    longitude: number;
+  };
+  anchor?: { x: number; y: number };
+  flat?: boolean;
+  [key: string]: unknown;
+}
+
 // Marker wrapper that loads the actual Marker lazily
-const Marker: React.FC<any> = (props) => {
+const Marker: React.FC<MarkerProps> = (props) => {
   const { children, ...rest } = props;
   const ActualMarker = useMemo(() => {
+    if (isExpoGo) return PlaceholderMarker;
     const maps = getMaps();
-    return maps?.Marker || PlaceholderMarker;
+    if (maps?.Marker) {
+      return maps.Marker as React.ComponentType<Record<string, unknown>>;
+    }
+    return PlaceholderMarker;
   }, []);
 
   return <ActualMarker {...rest}>{children}</ActualMarker>;
 };
 
-// PROVIDER_GOOGLE - exported as undefined since we load maps lazily
-// For development builds, the actual value will be used when getMaps() is called
-const PROVIDER_GOOGLE = undefined as any;
+// PROVIDER_GOOGLE - exported as undefined for compatibility
+// In dev builds, the actual value will be used when getMaps() is called
+const PROVIDER_GOOGLE = Platform.OS === 'android' && !isExpoGo ? 'google' : undefined;
 
 export { Marker, PROVIDER_GOOGLE };
 export default MapView;

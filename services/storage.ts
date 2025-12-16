@@ -4,7 +4,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MissionVibe } from '@/types/mission';
+import { MissionVibe, RouteCoordinate } from '@/types/mission';
 import { supabase, ProfileRow, MissionRow } from '@/lib/supabase';
 
 // Storage Keys
@@ -31,6 +31,8 @@ export interface CompletedMission {
   rewardText: string;
   completedAt: string;
   durationMinutes: number;
+  /** GPS route coordinates recorded during the mission */
+  routeCoordinates?: RouteCoordinate[];
 }
 
 // Default values
@@ -79,6 +81,7 @@ const missionRowToCompleted = (row: MissionRow): CompletedMission => ({
   rewardText: row.reward_text || '',
   completedAt: row.completed_at,
   durationMinutes: row.duration_minutes,
+  routeCoordinates: row.route_coordinates || undefined,
 });
 
 // ============================================
@@ -238,6 +241,7 @@ const saveCloudMission = async (userId: string, mission: CompletedMission): Prom
         reward_text: mission.rewardText,
         completed_at: mission.completedAt,
         duration_minutes: mission.durationMinutes,
+        route_coordinates: mission.routeCoordinates || [],
       });
 
     if (error) {
@@ -488,4 +492,50 @@ export const hasLocalDataToSync = async (): Promise<boolean> => {
     localStats.totalMissions > 0 ||
     localHistory.length > 0
   );
+};
+
+/**
+ * Update the device ID for a user's profile
+ * Called when user signs in or app initializes
+ */
+export const updateUserDeviceId = async (userId: string, deviceId: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ device_id: deviceId })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error updating device ID:', error);
+      throw error;
+    }
+
+    console.log('Device ID updated successfully');
+  } catch (error) {
+    console.error('Error updating device ID:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get the device ID for a user
+ */
+export const getUserDeviceId = async (userId: string): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('device_id')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching device ID:', error);
+      return null;
+    }
+
+    return data?.device_id || null;
+  } catch (error) {
+    console.error('Error fetching device ID:', error);
+    return null;
+  }
 };

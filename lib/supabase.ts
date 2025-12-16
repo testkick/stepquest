@@ -51,6 +51,13 @@ export interface ProfileRow {
   total_missions: number;
   total_distance_km: number;
   updated_at: string;
+  device_id: string | null;
+}
+
+export interface RouteCoordinateRow {
+  latitude: number;
+  longitude: number;
+  timestamp: number;
 }
 
 export interface MissionRow {
@@ -65,4 +72,5 @@ export interface MissionRow {
   completed_at: string;
   duration_minutes: number;
   created_at: string;
+  route_coordinates: RouteCoordinateRow[] | null;
 }

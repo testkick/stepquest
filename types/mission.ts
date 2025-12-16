@@ -4,6 +4,15 @@
 
 export type MissionVibe = 'chill' | 'discovery' | 'workout';
 
+/**
+ * GPS coordinate with timestamp for route tracking
+ */
+export interface RouteCoordinate {
+  latitude: number;
+  longitude: number;
+  timestamp: number; // Unix timestamp in milliseconds
+}
+
 export interface Mission {
   id: string;
   vibe: MissionVibe;
@@ -20,6 +29,22 @@ export interface ActiveMission extends Mission {
   isCompleted: boolean;
   rewardText?: string;
   isGeneratingReward?: boolean;
+  /** Array of GPS coordinates recorded during the mission */
+  routeCoordinates: RouteCoordinate[];
+}
+
+export interface CompletedMission {
+  id: string;
+  title: string;
+  description: string;
+  vibe: MissionVibe;
+  stepTarget: number;
+  stepsCompleted: number;
+  rewardText: string;
+  completedAt: string;
+  durationMinutes: number;
+  /** Array of GPS coordinates from the mission route */
+  routeCoordinates?: RouteCoordinate[];
 }
 
 export type MissionState = 'idle' | 'scanning' | 'selecting' | 'active' | 'completed';
@@ -31,6 +56,8 @@ export interface MissionContextType {
   scanForMissions: () => Promise<void>;
   selectMission: (mission: Mission, currentSteps: number) => void;
   updateMissionProgress: (currentSteps: number) => void;
+  /** Add a GPS coordinate to the active mission's route */
+  addRoutePoint: (latitude: number, longitude: number) => void;
   completeMission: () => void;
   cancelMission: () => void;
   dismissMissions: () => void;

@@ -161,6 +161,7 @@ export default function ExplorerDashboard() {
     scanForMissions,
     selectMission,
     updateMissionProgress,
+    addRoutePoint,
     completeMission,
     cancelMission,
     dismissMissions,
@@ -174,6 +175,13 @@ export default function ExplorerDashboard() {
       updateMissionProgress(steps);
     }
   }, [steps, activeMission, missionState, updateMissionProgress]);
+
+  // Record GPS route when location updates during active mission
+  useEffect(() => {
+    if (location && missionState === 'active') {
+      addRoutePoint(location.latitude, location.longitude);
+    }
+  }, [location, missionState, addRoutePoint]);
 
   // Center map on user when location updates (only on native)
   useEffect(() => {

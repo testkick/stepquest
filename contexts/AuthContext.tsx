@@ -6,7 +6,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { syncLocalDataToCloud } from '@/services/storage';
+import { syncLocalDataToCloud, updateUserDeviceId } from '@/services/storage';
+import { initializeDeviceTracking, getDeviceId } from '@/services/device';
 
 interface AuthContextType {
   user: User | null;
@@ -20,6 +21,27 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/**
+ * Sync device ID to user profile
+ */
+const syncDeviceId = async (userId: string): Promise<void> => {
+  try {
+    // Initialize device tracking (requests ATT permission on iOS)
+    await initializeDeviceTracking();
+
+    // Get device ID
+    const deviceId = await getDeviceId();
+
+    if (deviceId) {
+      await updateUserDeviceId(userId, deviceId);
+      console.log('Device ID synced to profile');
+    }
+  } catch (error) {
+    console.error('Error syncing device ID:', error);
+    // Don't throw - device ID sync is not critical
+  }
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -31,6 +53,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setIsLoading(false);
+
+      // Sync device ID if user is logged in
+      if (session?.user) {
+        syncDeviceId(session.user.id);
+      }
     });
 
     // Listen for auth changes
@@ -64,6 +91,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error('Error syncing local data:', syncError);
           // Don't fail login if sync fails
         }
+
+        // Sync device ID after login
+        try {
+          await syncDeviceId(data.user.id);
+        } catch (deviceError) {
+          console.error('Error syncing device ID:', deviceError);
+          // Don't fail login if device ID sync fails
+        }
       }
 
       return { error: null };
@@ -90,6 +125,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (syncError) {
           console.error('Error syncing local data:', syncError);
           // Don't fail signup if sync fails
+        }
+
+        // Sync device ID after signup
+        try {
+          await syncDeviceId(data.user.id);
+        } catch (deviceError) {
+          console.error('Error syncing device ID:', deviceError);
+          // Don't fail signup if device ID sync fails
         }
       }
 
