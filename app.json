@@ -14,7 +14,9 @@
         "NSLocationWhenInUseUsageDescription": "Stepquest needs your location to show your position on the map and generate location-based walking quests.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Stepquest needs your location to track your walking routes and provide personalized quests based on your surroundings.",
         "NSMotionUsageDescription": "Stepquest needs access to your motion data to count your steps and track your walking progress.",
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       },
       "config": {
         "googleMapsApiKey": "$(GOOGLE_MAPS_API_KEY)"
