@@ -8,7 +8,6 @@ import Animated, {
   withTiming,
   interpolate,
   Extrapolation,
-  runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Mission, VIBE_CONFIG } from '@/types/mission';
@@ -70,11 +69,19 @@ export const QuestCard: React.FC<QuestCardProps> = ({
   }));
 
   const handlePress = () => {
-    // Animate out before selecting
-    scale.value = withSpring(0.95, { damping: 15 }, () => {
+    // Animate press feedback
+    scale.value = withSpring(0.95, { damping: 15 });
+
+    // Call onSelect after a brief delay for visual feedback
+    // Using setTimeout instead of runOnJS to avoid animation thread issues
+    setTimeout(() => {
       scale.value = withSpring(1, { damping: 15 });
-      runOnJS(onSelect)(mission);
-    });
+      try {
+        onSelect(mission);
+      } catch (error) {
+        console.error('Error selecting mission:', error);
+      }
+    }, 100);
   };
 
   return (
