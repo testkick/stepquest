@@ -15,12 +15,15 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Stepquest needs your location to track your walking routes and provide personalized quests based on your surroundings.",
         "NSMotionUsageDescription": "Stepquest needs access to your motion data to count your steps and track your walking progress.",
         "UIBackgroundModes": [
+          "location",
           "location"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       },
       "config": {
         "googleMapsApiKey": "$(GOOGLE_MAPS_API_KEY)"
-      }
+      },
+      "bundleIdentifier": "com.glougheed.stepquest"
     },
     "android": {
       "adaptiveIcon": {
@@ -83,7 +86,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "12c137c8-0a19-47b5-88a7-dbfc87f32392"
+        "projectId": "6c1e45db-087a-419f-9928-947944585348"
       }
     },
     "owner": "glougheed"
